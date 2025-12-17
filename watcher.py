@@ -6,11 +6,7 @@ from typing import Dict, Any, List
 STATE_FILE = "state.json"
 
 def tg_send(text: str) -> None:
-    token = os.environ["TG_BOT_TOKEN"]
-    chat_id = os.environ["TG_CHAT_ID"]
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    with httpx.Client(timeout=15) as client:
-        client.post(url, json={"chat_id": chat_id, "text": text})
+    print("TG SEND:", text)
 
 def load_state() -> Dict[str, Any]:
     if not os.path.exists(STATE_FILE):
