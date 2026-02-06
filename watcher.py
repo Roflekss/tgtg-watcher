@@ -20,11 +20,13 @@ def save_state(state: Dict[str, Any]) -> None:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f)
 
+
 def fetch_tgtg_availability():
-    client = TgtgClient(
-        email=os.environ["TGTG_EMAIL"],
-        password=os.environ["TGTG_PASSWORD"]
-    )
+    email = os.environ["TGTG_EMAIL"]
+    password = os.environ["TGTG_PASSWORD"]
+
+    client = TgtgClient(email=email)
+    client.login(password=password)
 
     items = client.get_items()
 
