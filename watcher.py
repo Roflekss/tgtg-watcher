@@ -2,6 +2,8 @@ import os
 import json
 import httpx
 from typing import Dict, Any, List
+from tgtg import TgtgClient
+
 
 STATE_FILE = "state.json"
 
@@ -18,9 +20,24 @@ def save_state(state: Dict[str, Any]) -> None:
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f)
 
-def fetch_tgtg_availability() -> List[Dict[str, Any]]:
-    # TODO: подключим TGTG позже
-    return []
+def fetch_tgtg_availability():
+    client = TgtgClient(
+        email=os.environ["TGTG_EMAIL"],
+        password=os.environ["TGTG_PASSWORD"]
+    )
+
+    items = client.get_items()
+
+    result = []
+    for item in items:
+        result.append({
+            "store_id": item["store"]["store_id"],
+            "store_name": item["store"]["store_name"],
+            "items_available": item["items_available"],
+        })
+
+    return result
+
 
 def main() -> None:
     watched_ids = set(filter(None, os.environ.get("WATCHED_STORE_IDS", "").split(",")))
