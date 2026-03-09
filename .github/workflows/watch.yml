@@ -1,29 +1,40 @@
 name: TGTG Watcher
 
-on:
-  schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+
+#on:
+  #schedule:
+    #- cron: "*/5 * * * *"   
+  #workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: |
+
+      - name: Install dependencies
+        run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - uses: actions/cache@v4
+
+      - name: Cache state
+        uses: actions/cache@v4
         with:
           path: state.json
           key: tgtg-state
-      - env:
+
+      - name: Run watcher
+        env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
           WATCHED_STORE_IDS: ${{ secrets.WATCHED_STORE_IDS }}
           TGTG_EMAIL: ${{ secrets.TGTG_EMAIL }}
-          TGTG_PASSWORD: ${{ secrets.TGTG_PASSWORD }} 
+          TGTG_PASSWORD: ${{ secrets.TGTG_PASSWORD }}
         run: python watcher.py
