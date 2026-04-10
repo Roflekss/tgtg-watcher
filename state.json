@@ -1,0 +1,23 @@
+{
+  "last": {
+    "139721329306347840": 2,
+    "137351038318497952": 2,
+    "224631": 0
+  },
+  "bot": {
+    "enabled": true,
+    "mode": "track_changes",
+    "awaiting_restaurant_input": false,
+    "pending_store_candidate": null
+  },
+  "watched_store_ids": [
+    "139721329306347840",
+    "224631",
+    "137351038318497952"
+  ],
+  "last_names": {
+    "137351038318497952": "Green Camellia",
+    "224631": "Finn",
+    "139721329306347840": "Pizzeria Mezzaluna"
+  }
+}
