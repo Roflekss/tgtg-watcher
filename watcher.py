@@ -30,10 +30,12 @@ def load_state() -> Dict[str, Any]:
     if not os.path.exists(STATE_FILE):
         return {
             "last": {},
+            "last_names": {},
             "bot": {
                 "enabled": False,
                 "mode": "track_changes",
                 "awaiting_restaurant_input": False,
+                "pending_store_candidate": None,
             },
             "watched_store_ids": []
         }
@@ -44,12 +46,16 @@ def load_state() -> Dict[str, Any]:
     if "last" not in data:
         data["last"] = {}
 
+    if "last_names" not in data:
+        data["last_names"] = {}
+
     if "bot" not in data:
         data["bot"] = {}
 
     data["bot"].setdefault("enabled", False)
     data["bot"].setdefault("mode", "track_changes")
     data["bot"].setdefault("awaiting_restaurant_input", False)
+    data["bot"].setdefault("pending_store_candidate", None)
 
     if "watched_store_ids" not in data:
         data["watched_store_ids"] = []
@@ -62,7 +68,7 @@ def save_state(state: Dict[str, Any]) -> None:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
-def fetch_tgtg_availability():
+def fetch_tgtg_availability() -> List[Dict[str, Any]]:
     client = TgtgClient(
         access_token=os.environ["TGTG_ACCESS_TOKEN"],
         refresh_token=os.environ["TGTG_REFRESH_TOKEN"],
@@ -87,22 +93,41 @@ def fetch_tgtg_availability():
 
         all_items.extend(items)
 
-        # если пришло меньше, чем page_size — это последняя страница
         if len(items) < 100:
             break
 
         page += 1
 
-    print(f"LIVE TOTAL ITEMS: {len(all_items)}")
+    stores_map: Dict[str, Dict[str, Any]] = {}
 
-    return [
-        {
-            "store_id": str(item["store"]["store_id"]),
-            "store_name": item["store"]["store_name"],
-            "items_available": item.get("items_available", 0),
-        }
-        for item in all_items
-    ]
+    for item in all_items:
+        store = item.get("store", {})
+        store_id = str(store.get("store_id", "")).strip()
+        store_name = str(store.get("store_name", "Unknown store")).strip()
+        items_available = int(item.get("items_available", 0))
+
+        if not store_id:
+            continue
+
+        if store_id not in stores_map:
+            stores_map[store_id] = {
+                "store_id": store_id,
+                "store_name": store_name,
+                "items_available": items_available,
+            }
+        else:
+            stores_map[store_id]["items_available"] = max(
+                int(stores_map[store_id]["items_available"]),
+                items_available
+            )
+
+    result = list(stores_map.values())
+
+    print(f"LIVE RAW ITEMS: {len(all_items)}")
+    print(f"LIVE UNIQUE STORES: {len(result)}")
+
+    return result
+
 
 def main() -> None:
     state = load_state()

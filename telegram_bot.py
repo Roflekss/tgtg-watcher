@@ -26,6 +26,7 @@ def load_state():
     if not os.path.exists(STATE_FILE):
         return {
             "last": {},
+            "last_names": {},
             "bot": {
                 "enabled": False,
                 "mode": "track_changes",
@@ -40,6 +41,9 @@ def load_state():
 
     if "last" not in data:
         data["last"] = {}
+
+    if "last_names" not in data:
+        data["last_names"] = {}
 
     if "bot" not in data:
         data["bot"] = {}
@@ -103,17 +107,14 @@ def find_store_candidate(user_input: str):
     if not query:
         return None
 
-    # 1. точное совпадение store_name
     for store in stores:
         if normalize_text(store["store_name"]) == query:
             return store
 
-    # 2. точное совпадение display_name
     for store in stores:
         if normalize_text(store["display_name"]) == query:
             return store
 
-    # 3. store_name/display_name начинается с запроса
     startswith_matches = []
     for store in stores:
         store_name = normalize_text(store["store_name"])
@@ -125,7 +126,6 @@ def find_store_candidate(user_input: str):
     if len(startswith_matches) == 1:
         return startswith_matches[0]
 
-    # 4. частичное совпадение
     contains_matches = []
     for store in stores:
         store_name = normalize_text(store["store_name"])
@@ -137,7 +137,6 @@ def find_store_candidate(user_input: str):
     if len(contains_matches) == 1:
         return contains_matches[0]
 
-    # 5. fuzzy matching
     lookup = {}
     candidates = []
 
@@ -159,25 +158,26 @@ def find_store_candidate(user_input: str):
 
 def build_main_menu():
     keyboard = [
-        [InlineKeyboardButton("👀 Следить", callback_data="watch_now")],
-        [InlineKeyboardButton("➕ Добавить ресторан", callback_data="add_restaurant")],
-        [InlineKeyboardButton("📋 Посмотреть отслеживаемые рестораны", callback_data="show_restaurants")],
-        [InlineKeyboardButton("ℹ️ Статус", callback_data="status")],
+        [InlineKeyboardButton("👀 Watch", callback_data="watch_now")],
+        [InlineKeyboardButton("➕ Add restaurant", callback_data="add_restaurant")],
+        [InlineKeyboardButton("➖ Remove restaurant", callback_data="remove_restaurant")],
+        [InlineKeyboardButton("📋 View watched restaurants", callback_data="show_restaurants")],
+        [InlineKeyboardButton("ℹ️ Status", callback_data="status")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
 def build_back_to_menu():
     keyboard = [
-        [InlineKeyboardButton("⬅️ Вернуться в главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton("⬅️ Back to main menu", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
 def build_confirm_candidate_menu():
     keyboard = [
-        [InlineKeyboardButton("✅ Да, добавить", callback_data="confirm_add_restaurant")],
-        [InlineKeyboardButton("❌ Нет, не он", callback_data="reject_add_restaurant")],
+        [InlineKeyboardButton("✅ Yes, add", callback_data="confirm_add_restaurant")],
+        [InlineKeyboardButton("❌ No, not this", callback_data="reject_add_restaurant")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -190,44 +190,31 @@ def get_store_name_map():
 def build_watch_text() -> str:
     state = load_state()
     watched_ids = [str(x) for x in state.get("watched_store_ids", [])]
+    last = state.get("last", {})
+    last_names = state.get("last_names", {})
 
     if not watched_ids:
         return (
-            "👀 Слежение включено\n\n"
-            "Но у тебя пока нет отслеживаемых ресторанов."
+            "👀 Watching enabled\n\n"
+            "No restaurants added yet."
         )
 
-    try:
-        offers = fetch_tgtg_availability()
-    except Exception as e:
-        return (
-            "👀 Слежение включено\n\n"
-            "Не удалось получить текущие данные по ресторанам.\n"
-            f"Ошибка: {e}"
-        )
-
-    offers_map = {}
-    for offer in offers:
-        sid = str(offer.get("store_id"))
-        offers_map[sid] = offer
+    lines = [
+        "👀 Watching enabled",
+        "",
+        "Current availability:"
+    ]
 
     store_map = get_store_name_map()
 
-    lines = [
-        "👀 Слежение включено",
-        "",
-        "Сейчас по отслеживаемым ресторанам:"
-    ]
-
     for sid in watched_ids:
-        name = store_map.get(sid, f"Unknown store ({sid})")
-        offer = offers_map.get(sid)
+        name = last_names.get(sid) or store_map.get(sid, f"Unknown store ({sid})")
 
-        if offer:
-            avail = int(offer.get("items_available", 0))
-            lines.append(f"• {name}: {avail} пак.")
+        if sid in last:
+            avail = int(last.get(sid, 0))
+            lines.append(f"• {name}: {avail} items")
         else:
-            lines.append(f"• {name}: нет данных")
+            lines.append(f"• {name}: no data yet")
 
     return "\n".join(lines)
 
@@ -239,22 +226,45 @@ def build_restaurants_text() -> str:
     last_names = state.get("last_names", {})
 
     if not watched_ids:
-        return "📋 Отслеживаемые рестораны\n\nСписок пуст."
+        return "📋 Watched restaurants\n\nList is empty."
 
     store_map = get_store_name_map()
 
-    lines = ["📋 Отслеживаемые рестораны\n"]
+    lines = ["📋 Watched restaurants\n"]
 
     for idx, sid in enumerate(watched_ids, start=1):
         name = last_names.get(sid) or store_map.get(sid, f"Unknown store ({sid})")
 
         if sid in last:
             avail = int(last.get(sid, 0))
-            lines.append(f"{idx}. {name} — {avail} пак.")
+            lines.append(f"{idx}. {name} — {avail} items")
         else:
-            lines.append(f"{idx}. {name} — пока нет данных")
+            lines.append(f"{idx}. {name} — no data yet")
 
     return "\n".join(lines)
+
+
+def build_remove_restaurant_menu():
+    state = load_state()
+    watched_ids = [str(x) for x in state.get("watched_store_ids", [])]
+    last_names = state.get("last_names", {})
+    store_map = get_store_name_map()
+
+    keyboard = []
+
+    for sid in watched_ids:
+        name = last_names.get(sid) or store_map.get(sid, f"Unknown store ({sid})")
+        short_name = name[:55] + "…" if len(name) > 55 else name
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🗑 {short_name}",
+                callback_data=f"delete_store:{sid}"
+            )
+        ])
+
+    keyboard.append([InlineKeyboardButton("⬅️ Back to main menu", callback_data="main_menu")])
+    return InlineKeyboardMarkup(keyboard)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = load_state()
@@ -263,7 +273,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_state(state)
 
     await update.message.reply_text(
-        "TGTG Watcher\n\nГлавное меню:",
+        "TGTG Watcher\n\nMain menu:",
         reply_markup=build_main_menu()
     )
 
@@ -282,7 +292,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_state(state)
 
         await query.edit_message_text(
-            text="TGTG Watcher\n\nГлавное меню:",
+            text="TGTG Watcher\n\nMain menu:",
             reply_markup=build_main_menu()
         )
         return
@@ -307,9 +317,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             text=(
-                "➕ Добавление ресторана\n\n"
-                "Отправь название сообщением.\n"
-                "Например: Anker или Finn"
+                "➕ Add restaurant\n\n"
+                "Send the name as a message.\n"
+                "Example: Anker or Finn"
             ),
             reply_markup=build_back_to_menu()
         )
@@ -320,7 +330,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not candidate:
             await query.edit_message_text(
-                text="❌ Нет ресторана для подтверждения.\n\nВозвращаю в главное меню.",
+                text="❌ No restaurant to confirm.\n\nReturning to main menu.",
                 reply_markup=build_main_menu()
             )
             return
@@ -335,7 +345,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await query.edit_message_text(
                 text=(
-                    f"ℹ️ Этот ресторан уже отслеживается:\n\n"
+                    f"ℹ️ This restaurant is already being tracked:\n\n"
                     f"{store_name}"
                 ),
                 reply_markup=build_main_menu()
@@ -347,7 +357,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_state(state)
 
             await query.edit_message_text(
-                text=f"❌ Нельзя добавить больше {MAX_WATCHED_RESTAURANTS} ресторанов.",
+                text=f"❌ You cannot add more than {MAX_WATCHED_RESTAURANTS} restaurants.",
                 reply_markup=build_main_menu()
             )
             return
@@ -359,7 +369,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             text=(
-                "✅ Ресторан добавлен в слежку\n\n"
+                "✅ Restaurant added to tracking\n\n"
                 f"{store_name}"
             ),
             reply_markup=build_main_menu()
@@ -372,7 +382,64 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_state(state)
 
         await query.edit_message_text(
-            text="❌ Не нашли такого ресторана.\n\nВозвращаю в главное меню.",
+            text="❌ Restaurant not found.\n\nReturning to main menu.",
+            reply_markup=build_main_menu()
+        )
+        return
+
+    if data == "remove_restaurant":
+        bot_state["awaiting_restaurant_input"] = False
+        bot_state["pending_store_candidate"] = None
+        save_state(state)
+
+        watched_ids = [str(x) for x in state.get("watched_store_ids", [])]
+
+        if not watched_ids:
+            await query.edit_message_text(
+                text="➖ Remove restaurant\n\nWatched list is empty.",
+                reply_markup=build_main_menu()
+            )
+            return
+
+        await query.edit_message_text(
+            text="➖ Choose a restaurant to remove:",
+            reply_markup=build_remove_restaurant_menu()
+        )
+        return
+
+    if data.startswith("delete_store:"):
+        store_id = data.split(":", 1)[1]
+        watched_ids = [str(x) for x in state.get("watched_store_ids", [])]
+        last = state.get("last", {})
+        last_names = state.get("last_names", {})
+        store_map = get_store_name_map()
+
+        if store_id not in watched_ids:
+            await query.edit_message_text(
+                text="❌ This restaurant is no longer being tracked.",
+                reply_markup=build_main_menu()
+            )
+            return
+
+        watched_ids = [sid for sid in watched_ids if sid != store_id]
+        state["watched_store_ids"] = watched_ids
+
+        removed_name = last_names.get(store_id) or store_map.get(store_id, f"Unknown store ({store_id})")
+
+        if store_id in last:
+            del last[store_id]
+        if store_id in last_names:
+            del last_names[store_id]
+
+        state["last"] = last
+        state["last_names"] = last_names
+        save_state(state)
+
+        await query.edit_message_text(
+            text=(
+                "✅ Restaurant removed from tracking\n\n"
+                f"{removed_name}"
+            ),
             reply_markup=build_main_menu()
         )
         return
@@ -393,22 +460,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_state["pending_store_candidate"] = None
         save_state(state)
 
-        enabled_text = "включено" if bot_state.get("enabled") else "выключено"
+        enabled_text = "enabled" if bot_state.get("enabled") else "disabled"
         watched_count = len(state.get("watched_store_ids", []))
 
         await query.edit_message_text(
             text=(
-                "ℹ️ Статус\n\n"
-                f"Слежение: {enabled_text}\n"
-                f"Режим: следить за изменением количества\n"
-                f"Ресторанов в слежке: {watched_count}/{MAX_WATCHED_RESTAURANTS}"
+                "ℹ️ Status\n\n"
+                f"Watching: {enabled_text}\n"
+                f"Mode: track quantity changes\n"
+                f"Tracked restaurants: {watched_count}/{MAX_WATCHED_RESTAURANTS}"
             ),
             reply_markup=build_back_to_menu()
         )
         return
 
     await query.edit_message_text(
-        text="Неизвестная команда",
+        text="Unknown command",
         reply_markup=build_back_to_menu()
     )
 
@@ -433,8 +500,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             (
-                f"❌ Нельзя добавить больше {MAX_WATCHED_RESTAURANTS} ресторанов.\n\n"
-                "Возвращаю в главное меню."
+                f"❌ You cannot add more than {MAX_WATCHED_RESTAURANTS} restaurants.\n\n"
+                "Returning to main menu."
             ),
             reply_markup=build_main_menu()
         )
@@ -449,8 +516,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             (
-                "❌ Не нашли такого ресторана.\n\n"
-                "Возвращаю в главное меню."
+                "❌ Restaurant not found.\n\n"
+                "Returning to main menu."
             ),
             reply_markup=build_main_menu()
         )
@@ -468,7 +535,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         (
-            "❓ Ты имел в виду этот ресторан?\n\n"
+            "❓ Did you mean this restaurant?\n\n"
             f"{pretty_name}"
         ),
         reply_markup=build_confirm_candidate_menu()
